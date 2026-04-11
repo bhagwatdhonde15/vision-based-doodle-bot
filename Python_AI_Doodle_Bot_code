@@ -1,0 +1,178 @@
+Arduino_ID
+
+#include <Stepper.h>
+#include <ESP32Servo.h>
+
+#define STEPS 200
+
+Stepper motor1(STEPS, 14, 27, 26, 25);
+Stepper motor2(STEPS, 33, 32, 18, 19);
+
+Servo penServo;
+int servoPin = 13;
+
+int lightPin = 23;
+int robotSpeed = 150;
+
+void moveForward(int steps){
+  motor1.setSpeed(robotSpeed);
+  motor2.setSpeed(robotSpeed);
+  for(int i=0;i<steps;i++){
+    motor1.step(1);
+    motor2.step(1);
+  }
+}
+
+void rotateAngle(int steps){
+  motor1.setSpeed(robotSpeed);
+  motor2.setSpeed(robotSpeed);
+  for(int i=0;i<steps;i++){
+    motor1.step(1);
+    motor2.step(-1);
+  }
+}
+
+void drawCircle(){
+  penServo.write(90);
+  delay(400);
+  motor1.setSpeed(robotSpeed+30);
+  motor2.setSpeed(robotSpeed-30);
+  for(int i=0;i<3200;i++){
+    motor1.step(1);
+    motor2.step(1);
+  }
+  penServo.write(40);
+}
+
+void drawSquare(){
+  penServo.write(90);
+  delay(400);
+  for(int i=0;i<4;i++){
+    moveForward(1200);
+    rotateAngle(600);
+  }
+  penServo.write(40);
+}
+
+void drawTriangle(){
+  penServo.write(90);
+  delay(400);
+  for(int i=0;i<3;i++){
+    moveForward(1200);
+    rotateAngle(800);
+  }
+  penServo.write(40);
+}
+
+void setup(){
+  Serial.begin(115200);
+  pinMode(lightPin,OUTPUT);
+  penServo.attach(servoPin);
+
+  Serial.println("READY");
+}
+
+void loop(){
+
+  if(Serial.available()){
+
+    char cmd = Serial.read();
+
+    if(cmd=='c'){
+      Serial.println("Circle");
+      drawCircle();
+    }
+
+    else if(cmd=='s'){
+      Serial.println("Square");
+      drawSquare();
+    }
+
+    else if(cmd=='t'){
+      Serial.println("Triangle");
+      drawTriangle();
+    }
+
+  }
+
+}
+
+
+
+
+Python Programing Code 
+
+
+
+import cv2
+import numpy as np
+import serial
+import time
+
+# ===== CHANGE COM PORT =====
+esp = serial.Serial('COM8',115200)
+time.sleep(2)
+
+cap = cv2.VideoCapture(0)
+
+last_cmd = 'c'
+
+while True:
+
+    ret, frame = cap.read()
+    if not ret:
+        break
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+    blur = cv2.GaussianBlur(gray,(5,5),1)
+
+    canny = cv2.Canny(blur,60,160)
+
+    contours,_ = cv2.findContours(canny,
+                                  cv2.RETR_EXTERNAL,
+                                  cv2.CHAIN_APPROX_SIMPLE)
+
+    for cnt in contours:
+
+        area = cv2.contourArea(cnt)
+
+        if area > 2500:
+
+            peri = cv2.arcLength(cnt,True)
+            approx = cv2.approxPolyDP(cnt,0.02*peri,True)
+
+            x,y,w,h = cv2.boundingRect(approx)
+
+            cmd = ''
+
+            if len(approx)==3:
+                shape = "Triangle"
+                cmd = 't'
+
+            elif len(approx)==4:
+                shape = "Square"
+                cmd = 's'
+
+            else:
+                shape = "Circle"
+                cmd = 'c'
+
+            cv2.drawContours(frame,[approx],-1,(0,255,0),3)
+            cv2.putText(frame,shape,(x,y),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        1,(0,0,255),2)
+
+            if cmd != last_cmd:
+                esp.write(cmd.encode())
+                print("Sent:",cmd)
+                last_cmd = cmd
+                time.sleep(2)
+
+    cv2.imshow("AI Doodle Bot",frame)
+
+    if cv2.waitKey(1)==27:
+        break
+
+cap.release()
+cv2.destroyAllWindows()
