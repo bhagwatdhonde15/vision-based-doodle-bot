@@ -1,0 +1,96 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+const char* ssid = "Bhagwat";
+const char* password = "bhagwat15";
+
+WebServer server(80);
+
+int M1[4] = {14,27,26,25};
+int M2[4] = {33,32,18,19};
+
+int speedDelay = 1;
+
+int stepSeq[8][4] = {
+  {1,0,0,0},
+  {1,1,0,0},
+  {0,1,0,0},
+  {0,1,1,0},
+  {0,0,1,0},
+  {0,0,1,1},
+  {0,0,0,1},
+  {1,0,0,1}
+};
+
+void stepMotor(int motor[], int step){
+  for(int i=0;i<4;i++){
+    digitalWrite(motor[i], stepSeq[step][i]);
+  }
+}
+
+
+void moveMotor(int motor[], int steps, bool dir){
+  for(int i=0;i<steps;i++){
+    for(int j=0;j<8;j++){
+      int s = dir ? j : (7-j);
+      stepMotor(motor, s);
+
+      delayMicroseconds(800);   
+    }
+  }
+}
+
+void moveX(int s,bool d){ moveMotor(M1,s,d); }
+void moveY(int s,bool d){ moveMotor(M2,s,d); }
+
+// Shapes
+void square(){
+  moveX(120,true); moveY(120,true);
+  moveX(120,false); moveY(120,false);
+}
+
+void circle(){
+  for(int i=0;i<120;i++){
+    moveX(1,true); moveY(1,true);
+  }
+}
+
+// Web UI
+void home(){
+  String page =
+  "<html><body style='text-align:center'>"
+  "<h2>FAST DOODLE BOT</h2>"
+  "<button onclick=\"fetch('/sq')\">Square</button><br><br>"
+  "<button onclick=\"fetch('/cr')\">Circle</button>"
+  "</body></html>";
+
+  server.send(200,"text/html",page);
+}
+
+void handleSquare(){ square(); server.send(200,"text/plain","OK"); }
+void handleCircle(){ circle(); server.send(200,"text/plain","OK"); }
+
+void setup(){
+  Serial.begin(115200);
+
+  for(int i=0;i<4;i++){
+    pinMode(M1[i],OUTPUT);
+    pinMode(M2[i],OUTPUT);
+  }
+
+  WiFi.begin(ssid,password);
+
+  while(WiFi.status()!=WL_CONNECTED){
+    delay(500);
+  }
+
+  server.on("/",home);
+  server.on("/sq",handleSquare);
+  server.on("/cr",handleCircle);
+
+  server.begin();
+}
+
+void loop(){
+  server.handleClient();
+}
