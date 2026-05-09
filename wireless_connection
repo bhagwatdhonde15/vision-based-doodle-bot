@@ -1,0 +1,558 @@
+//python 
+import cv2
+import time
+import numpy as np
+import requests
+
+# =========================
+# ESP32 IP
+# =========================
+ESP32_IP = "10.171.239.213"
+
+# =========================
+# MAIN LOOP
+# =========================
+while True:
+
+    cap = cv2.VideoCapture(0)
+
+    if not cap.isOpened():
+        print("❌ Camera not found")
+        exit()
+
+    start_time = time.time()
+
+    detected_shapes = set()
+
+    while True:
+
+        ret, frame = cap.read()
+
+        if not ret:
+            break
+
+        frame = cv2.resize(frame, (640, 480))
+
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+        blur = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        edges = cv2.Canny(blur, 50, 150)
+
+        contours, _ = cv2.findContours(
+            edges,
+            cv2.RETR_EXTERNAL,
+            cv2.CHAIN_APPROX_SIMPLE
+        )
+
+        for cnt in contours:
+
+            area = cv2.contourArea(cnt)
+
+            if area > 2000:
+
+                approx = cv2.approxPolyDP(
+                    cnt,
+                    0.02 * cv2.arcLength(cnt, True),
+                    True
+                )
+
+                corners = len(approx)
+
+                # =========================
+                # SHAPE DETECTION
+                # =========================
+                if corners == 3:
+                    shape = "Triangle"
+
+                elif corners == 4:
+
+                    x, y, w, h = cv2.boundingRect(approx)
+
+                    ratio = w / float(h)
+
+                    if 0.9 <= ratio <= 1.1:
+                        shape = "Square"
+                    else:
+                        shape = "Rectangle"
+
+                elif corners > 6:
+                    shape = "Circle"
+
+                else:
+                    shape = "Unknown"
+
+                detected_shapes.add(shape)
+
+                # DRAW CONTOUR
+                cv2.drawContours(
+                    frame,
+                    [approx],
+                    -1,
+                    (0, 255, 0),
+                    2
+                )
+
+                # LABEL
+                x, y, w, h = cv2.boundingRect(approx)
+
+                cx = x + w // 2
+                cy = y + h // 2
+
+                cv2.putText(
+                    frame,
+                    shape,
+                    (cx - 40, cy),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (255, 0, 0),
+                    2
+                )
+
+        # TIMER
+        remaining = int(30 - (time.time() - start_time))
+
+        cv2.putText(
+            frame,
+            f"Scanning: {remaining}s",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 255),
+            2
+        )
+
+        cv2.imshow("AI Shape Detection", frame)
+
+        # =========================
+        # KEYBOARD CONTROL
+        # =========================
+        key = cv2.waitKey(1) & 0xFF
+
+        # PEN UP
+        if key == ord('u') or key == ord('U'):
+
+            try:
+                requests.get(
+                    f"http://{ESP32_IP}/penup"
+                )
+
+                print("🖊️ Pen UP")
+
+            except:
+                print("❌ Pen UP failed")
+
+        # PEN DOWN
+        if key == ord('d') or key == ord('D'):
+
+            try:
+                requests.get(
+                    f"http://{ESP32_IP}/pendown"
+                )
+
+                print("🖊️ Pen DOWN")
+
+            except:
+                print("❌ Pen DOWN failed")
+
+        # ESC EXIT
+        if key == 27:
+            exit()
+
+        # STOP AFTER 30 sec
+        if time.time() - start_time > 30:
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+    # =========================
+    # USER SELECT SHAPE
+    # =========================
+    detected_shapes = list(detected_shapes)
+
+    if len(detected_shapes) == 0:
+        print("❌ No shapes detected")
+        continue
+
+    print("\nDetected Shapes:")
+
+    for i, shape in enumerate(detected_shapes):
+        print(f"{i}: {shape}")
+
+    try:
+        choice = int(
+            input(
+                "\n👉 Which shape should I draw? Enter number: "
+            )
+        )
+
+    except:
+        print("❌ Invalid input")
+        continue
+
+    if choice < 0 or choice >= len(detected_shapes):
+        print("❌ Invalid choice")
+        continue
+
+    selected_shape = detected_shapes[choice]
+
+    print(f"\n✅ Selected: {selected_shape}")
+
+    # =========================
+    # SEND TO ESP32
+    # =========================
+    shape = selected_shape.lower()
+
+    url = f"http://{ESP32_IP}/{shape}"
+
+    try:
+
+        response = requests.get(
+            url,
+            timeout=10
+        )
+
+        print("📡 ESP32 Response:")
+        print(response.text)
+
+    except Exception as e:
+
+        print("❌ ESP32 connection failed")
+
+        print(e)
+
+    print(f"🚀 Drawing {selected_shape}")
+
+
+
+
+    // c++ programing ardino 
+    
+#include <WiFi.h>
+#include <WebServer.h>
+#include <ESP32Servo.h>
+
+// =======================
+// WIFI
+// =======================
+const char* ssid = "Bhagwat";
+const char* password = "bhagwat@15";
+
+WebServer server(80);
+
+// =======================
+// SERVO
+// =======================
+Servo penServo;
+
+int servoPin = 13;
+
+// =======================
+// PEN FUNCTIONS
+// =======================
+void penDown() {
+
+  Serial.println("Pen DOWN");
+
+  penServo.write(30);
+
+  delay(500);
+}
+
+void penUp(){
+  Serial.println("Pen UP");
+  penServo.write(90);
+  delay(500);
+}
+
+// =======================
+// LEFT MOTOR PINS
+// =======================
+int L_AIN1 = 26;
+int L_AIN2 = 27;
+int L_BIN1 = 14;
+int L_BIN2 = 12;
+
+// =======================
+// RIGHT MOTOR PINS
+// =======================
+int R_AIN1 = 25;
+int R_AIN2 = 33;
+int R_BIN1 = 32;
+int R_BIN2 = 15;
+
+// =======================
+// STEP SEQUENCE
+// =======================
+int steps[8][4] = {
+  {1,0,0,0},
+  {1,1,0,0},
+  {0,1,0,0},
+  {0,1,1,0},
+  {0,0,1,0},
+  {0,0,1,1},
+  {0,0,0,1},
+  {1,0,0,1}
+};
+
+// =======================
+// MOTOR FUNCTIONS
+// =======================
+void setLeftStep(int a, int b, int c, int d) {
+
+  digitalWrite(L_AIN1, a);
+  digitalWrite(L_AIN2, b);
+  digitalWrite(L_BIN1, c);
+  digitalWrite(L_BIN2, d);
+}
+
+void setRightStep(int a, int b, int c, int d) {
+
+  digitalWrite(R_AIN1, a);
+  digitalWrite(R_AIN2, b);
+  digitalWrite(R_BIN1, c);
+  digitalWrite(R_BIN2, d);
+}
+
+// =======================
+// MOVE FORWARD
+// =======================
+void moveForward(int count) {
+
+  for (int x = 0; x < count; x++) {
+
+    for (int i = 0; i < 8; i++) {
+
+      setLeftStep(
+        steps[i][0],
+        steps[i][1],
+        steps[i][2],
+        steps[i][3]
+      );
+
+      setRightStep(
+        steps[i][0],
+        steps[i][1],
+        steps[i][2],
+        steps[i][3]
+      );
+
+      delay(1);
+    }
+  }
+}
+
+// =======================
+// TURN RIGHT
+// =======================
+void turnRight(int count) {
+
+  for (int x = 0; x < count; x++) {
+
+    for (int i = 0; i < 8; i++) {
+
+      setLeftStep(
+        steps[i][0],
+        steps[i][1],
+        steps[i][2],
+        steps[i][3]
+      );
+
+      setRightStep(
+        steps[7 - i][0],
+        steps[7 - i][1],
+        steps[7 - i][2],
+        steps[7 - i][3]
+      );
+
+      delay(1);
+    }
+  }
+}
+
+// =======================
+// DRAW SQUARE
+// =======================
+void drawSquare() {
+
+  Serial.println("Drawing Square");
+
+  penDown();
+
+  for (int i = 0; i < 4; i++) {
+
+    moveForward(150);
+
+    turnRight(80);
+  }
+
+  penUp();
+}
+
+// =======================
+// DRAW TRIANGLE
+// =======================
+void drawTriangle() {
+
+  Serial.println("Drawing Triangle");
+
+  penDown();
+
+  for (int i = 0; i < 3; i++) {
+
+    moveForward(150);
+
+    turnRight(120);
+  }
+
+  penUp();
+}
+
+// =======================
+// DRAW CIRCLE
+// =======================
+void drawCircle() {
+
+  Serial.println("Drawing Circle");
+
+  penDown();
+
+  for (int i = 0; i < 360; i++) {
+
+    moveForward(1);
+
+    turnRight(1);
+  }
+
+  penUp();
+}
+
+// =======================
+// ROOT PAGE
+// =======================
+void handleRoot() {
+
+  server.send(
+    200,
+    "text/plain",
+    "ESP32 Doodle Bot Running"
+  );
+}
+
+// =======================
+// SHAPE ROUTES
+// =======================
+void handleSquare() {
+
+  Serial.println("Square command received");
+
+  drawSquare();
+
+  server.send(200, "text/plain", "Square Drawn");
+}
+
+void handleTriangle() {
+
+  Serial.println("Triangle command received");
+
+  drawTriangle();
+
+  server.send(200, "text/plain", "Triangle Drawn");
+}
+
+void handleCircle() {
+
+  Serial.println("Circle command received");
+
+  drawCircle();
+
+  server.send(200, "text/plain", "Circle Drawn");
+}
+
+// =======================
+// MANUAL SERVO ROUTES
+// =======================
+void handlePenUp() {
+
+  penUp();
+
+  server.send(200, "text/plain", "Pen Up");
+}
+
+void handlePenDown() {
+
+  penDown();
+
+  server.send(200, "text/plain", "Pen Down");
+}
+
+// =======================
+// SETUP
+// =======================
+void setup() {
+
+  Serial.begin(115200);
+
+  // LEFT MOTOR
+  pinMode(L_AIN1, OUTPUT);
+  pinMode(L_AIN2, OUTPUT);
+  pinMode(L_BIN1, OUTPUT);
+  pinMode(L_BIN2, OUTPUT);
+
+  // RIGHT MOTOR
+  pinMode(R_AIN1, OUTPUT);
+  pinMode(R_AIN2, OUTPUT);
+  pinMode(R_BIN1, OUTPUT);
+  pinMode(R_BIN2, OUTPUT);
+
+  // SERVO
+  penServo.attach(servoPin);
+
+  penUp();
+
+  // WIFI
+  WiFi.begin(ssid, password);
+
+  Serial.print("Connecting");
+
+  while (WiFi.status() != WL_CONNECTED) {
+
+    delay(500);
+
+    Serial.print(".");
+  }
+
+  Serial.println("\nWiFi Connected!");
+
+  Serial.print("ESP32 IP Address: ");
+
+  Serial.println(WiFi.localIP());
+
+  // ROUTES
+  server.on("/", handleRoot);
+
+  server.on("/square", handleSquare);
+
+  server.on("/triangle", handleTriangle);
+
+  server.on("/circle", handleCircle);
+
+  server.on("/penup", handlePenUp);
+
+  server.on("/pendown", handlePenDown);
+
+  // START SERVER
+  server.begin();
+
+  Serial.println("Server Started");
+}
+
+// =======================
+// LOOP
+// =======================
+void loop() {
+
+  server.handleClient();
+}
+
